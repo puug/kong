@@ -124,10 +124,6 @@ local function get_kong_config_path(args_config)
   return config_path
 end
 
---
--- PUBLIC
---
-
 return {
   colors = colors,
   logger = logger,
