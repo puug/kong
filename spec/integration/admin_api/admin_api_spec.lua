@@ -1,6 +1,6 @@
 local spec_helper = require "spec.spec_helpers"
 local http_client = require "kong.tools.http_client"
-local cjson = require "cjson"
+local json = require "cjson"
 
 local env = spec_helper.get_env()
 local created_ids = {}
@@ -11,35 +11,33 @@ local ENDPOINTS = {
     collection = "apis",
     total = table.getn(env.faker.FIXTURES.api) + 1,
     entity = {
-      public_dns = "api.mockbin.com",
-      name = "mockbin",
-      target_url = "http://mockbin.com"
+      form = {
+        public_dns = "api.mockbin.com",
+        name = "mockbin",
+        target_url = "http://mockbin.com"
+      }
     },
-    update_fields = {
-      public_dns = "newapi.mockbin.com"
-    },
+    update_fields = { public_dns = "newapi.mockbin.com" },
     error_message = '{"public_dns":"public_dns is required","target_url":"target_url is required"}\n'
   },
   {
     collection = "consumers",
     total = table.getn(env.faker.FIXTURES.consumer) + 1,
     entity = {
-      custom_id = "123456789"
+      form = { custom_id = "123456789" },
     },
-    update_fields = {
-      custom_id = "ABC_custom_ID"
-    },
-    error_message = nil
+    update_fields = { custom_id = "ABC_custom_ID" },
+    error_message = '{"custom_id":"At least a \'custom_id\' or a \'username\' must be specified","username":"At least a \'custom_id\' or a \'username\' must be specified"}\n'
   },
   {
     collection = "basicauth_credentials",
     total = table.getn(env.faker.FIXTURES.basicauth_credential) + 1,
     entity = {
-      username = "username5555",
-      password = "password5555",
-      consumer_id = function()
-        return created_ids.consumers
-      end
+      form = {
+        username = "username5555",
+        password = "password5555",
+        consumer_id = function() return created_ids.consumers end
+      }
     },
     update_fields = {
       username = "upd_username5555",
@@ -51,33 +49,36 @@ local ENDPOINTS = {
     collection = "keyauth_credentials",
     total = table.getn(env.faker.FIXTURES.keyauth_credential) + 1,
     entity = {
-      key = "apikey5555",
-      consumer_id = function()
-        return created_ids.consumers
-      end
+      form = {
+        key = "apikey5555",
+        consumer_id = function() return created_ids.consumers end
+      }
     },
-    update_fields = {
-      key = "upd_apikey5555",
-    },
+    update_fields = { key = "upd_apikey5555", },
     error_message = '{"key":"key is required","consumer_id":"consumer_id is required"}\n'
   },
   {
     collection = "plugins_configurations",
     total = table.getn(env.faker.FIXTURES.plugin_configuration) + 1,
     entity = {
-      name = "ratelimiting",
-      api_id = function()
-        return created_ids.apis
-      end,
-      consumer_id = function()
-        return created_ids.consumers
-      end,
-      ["value.period"] = "second",
-      ["value.limit"] = 10
+      form = {
+        name = "ratelimiting",
+        api_id = function() return created_ids.apis end,
+        consumer_id = function() return created_ids.consumers end,
+        ["value.period"] = "second",
+        ["value.limit"] = 10
+      },
+      json = {
+        name = "ratelimiting",
+        api_id = function() return created_ids.apis end,
+        consumer_id = function() return created_ids.consumers end,
+        value = {
+          period = "second",
+          limit = 10
+        }
+      }
     },
-    update_fields = {
-      enabled = false
-    },
+    update_fields = { enabled = false },
     error_message = '{"name":"name is required","api_id":"api_id is required","value":"value is required"}\n'
   }
 }
@@ -99,7 +100,7 @@ describe("Admin API", function()
 
     it("should return Kong's version and a welcome message", function()
       local response, status = http_client.get(kWebURL)
-      local body = cjson.decode(response)
+      local body = json.decode(response)
       assert.are.equal(200, status)
       assert.truthy(body.version)
       assert.truthy(body.tagline)
@@ -119,24 +120,22 @@ describe("Admin API", function()
     for i, v in ipairs(ENDPOINTS) do
       describe(v.collection.." entity", function()
 
-        it("should not create with invalid parameters", function()
-          if v.collection ~= "consumers" then
-            local response, status, headers = http_client.post(kWebURL.."/"..v.collection.."/", {})
+        it("should not create with invalid url-encoded parameters", function()
+            local response, status = http_client.post(kWebURL.."/"..v.collection.."/", {})
             assert.are.equal(400, status)
             assert.are.equal(v.error_message, response)
-          end
         end)
 
-        it("should create an entity from valid paremeters", function()
+        it("should create an entity with an application/x-www-form-urlencoded body", function()
           -- Replace the IDs
-          for k, p in pairs(v.entity) do
+          for k, p in pairs(v.entity.form) do
             if type(p) == "function" then
-              v.entity[k] = p()
+              v.entity.form[k] = p()
             end
           end
 
-          local response, status, headers = http_client.post(kWebURL.."/"..v.collection.."/", v.entity)
-          local body = cjson.decode(response)
+          local response, status = http_client.post(kWebURL.."/"..v.collection.."/", v.entity.form)
+          local body = json.decode(response)
           assert.are.equal(201, status)
           assert.truthy(body)
 
@@ -144,10 +143,27 @@ describe("Admin API", function()
           created_ids[v.collection] = body.id
         end)
 
-        it("should not create when the content-type is wrong", function()
-          local response, status, headers = http_client.post(kWebURL.."/"..v.collection.."/", v.entity, { ["content-type"] = "application/json"})
-          assert.are.equal(415, status)
-          assert.are.equal("{\"message\":\"Unsupported Content-Type. Use \\\"application\\/x-www-form-urlencoded\\\".\"}\n", response)
+        it("should create an entity with an application/json body", function()
+          local _, err = env.dao_factory[v.collection]:delete(created_ids[v.collection])
+          assert.falsy(err)
+
+          local json_entity = v.entity.json and v.entity.json or v.entity.form
+          -- Replace the IDs
+          for k, p in pairs(json_entity) do
+            if type(p) == "function" then
+              json_entity[k] = p()
+            end
+          end
+
+          local response, status = http_client.post(kWebURL.."/"..v.collection.."/", json_entity,
+            { ["content-type"] = "application/json" }
+          )
+          local body = json.decode(response)
+          assert.are.equal(201, status)
+          assert.truthy(body)
+
+          -- Save the ID for later use
+          created_ids[v.collection] = body.id
         end)
 
       end)
@@ -158,17 +174,17 @@ describe("Admin API", function()
     for i, v in ipairs(ENDPOINTS) do
       describe(v.collection.." entity", function()
 
-        it("should return not retrieve any entity with an invalid parameter", function()
-          local response, status, headers = http_client.get(kWebURL.."/"..v.collection.."/"..created_ids[v.collection].."blah")
-          local body = cjson.decode(response)
+        it("should not retrieve any entity with an invalid parameter", function()
+          local response, status = http_client.get(kWebURL.."/"..v.collection.."/"..created_ids[v.collection].."blah")
+          local body = json.decode(response)
           assert.are.equal(404, status)
           assert.truthy(body)
           assert.are.equal('{"id":"'..created_ids[v.collection]..'blah is an invalid uuid"}\n', response)
         end)
 
         it("should retrieve all entities", function()
-          local response, status, headers = http_client.get(kWebURL.."/"..v.collection.."/")
-          local body = cjson.decode(response)
+          local response, status = http_client.get(kWebURL.."/"..v.collection.."/")
+          local body = json.decode(response)
           assert.are.equal(200, status)
           assert.truthy(body.data)
           --assert.truthy(body.total)
@@ -177,8 +193,8 @@ describe("Admin API", function()
         end)
 
         it("should retrieve one entity", function()
-          local response, status, headers = http_client.get(kWebURL.."/"..v.collection.."/"..created_ids[v.collection])
-          local body = cjson.decode(response)
+          local response, status = http_client.get(kWebURL.."/"..v.collection.."/"..created_ids[v.collection])
+          local body = json.decode(response)
           assert.are.equal(200, status)
           assert.truthy(body)
           assert.are.equal(created_ids[v.collection], body.id)
@@ -189,35 +205,41 @@ describe("Admin API", function()
   end)
 
   describe("PUT", function()
-    for i, v in ipairs(ENDPOINTS) do
+    for _, v in ipairs(ENDPOINTS) do
       describe(v.collection.." entity", function()
 
-        it("should not update when the content-type is wrong", function()
-          local response, status, headers = http_client.put(kWebURL.."/"..v.collection.."/"..created_ids[v.collection], body, { ["content-type"] = "application/x-www-form-urlencoded"})
-          assert.are.equal(415, status)
-          assert.are.equal("{\"message\":\"Unsupported Content-Type. Use \\\"application\\/json\\\".\"}\n", response)
-        end)
-
-        it("should update an entity if valid parameters", function()
+        it("should update an entity with an application/x-www-form-urlencoded body", function()
           local data = http_client.get(kWebURL.."/"..v.collection.."/"..created_ids[v.collection])
-          local body = cjson.decode(data)
+          local body = json.decode(data)
 
           -- Create new body
-          for k,v in pairs(v.update_fields) do
+          for k, v in pairs(v.update_fields) do
             body[k] = v
           end
 
-          local response, status, headers = http_client.put(kWebURL.."/"..v.collection.."/"..created_ids[v.collection], body)
-          local new_body = cjson.decode(response)
+          local response, status = http_client.put(kWebURL.."/"..v.collection.."/"..created_ids[v.collection], body)
+          local response_body = json.decode(response)
           assert.are.equal(200, status)
-          assert.truthy(new_body)
-          assert.are.equal(created_ids[v.collection], new_body.id)
+          assert.truthy(response_body)
+          assert.are.equal(created_ids[v.collection], response_body.id)
+          assert.are.same(body, response_body)
+        end)
 
-          for k,v in pairs(v.update_fields) do
-            assert.are.equal(v, new_body[k])
+        it("should update an entity with an application/json body", function()
+          local data = http_client.get(kWebURL.."/"..v.collection.."/"..created_ids[v.collection])
+          local body = json.decode(data)
+
+          -- Create new body
+          for k, v in pairs(v.update_fields) do
+            body[k] = v
           end
 
-          assert.are.same(body, new_body)
+          local response, status = http_client.put(kWebURL.."/"..v.collection.."/"..created_ids[v.collection], body, { ["content-type"] = "application/json" })
+          local response_body = json.decode(response)
+          assert.are.equal(200, status)
+          assert.truthy(response_body)
+          assert.are.equal(created_ids[v.collection], response_body.id)
+          assert.are.same(body, response_body)
         end)
 
       end)
@@ -231,9 +253,16 @@ describe("Admin API", function()
   describe("DELETE", function()
     describe("plugins_configurations", function()
 
+      it("should send 404 when trying to delete a non existing entity", function()
+        local response, status = http_client.delete(kWebURL.."/plugins_configurations/00000000-0000-0000-0000-000000000000")
+        assert.are.equal(404, status)
+        assert.are.same('{"message":"Not found"}\n', response)
+      end)
+
       it("should delete a plugin_configuration", function()
-        local response, status, headers = http_client.delete(kWebURL.."/plugins_configurations/"..created_ids.plugins_configurations)
+        local response, status = http_client.delete(kWebURL.."/plugins_configurations/"..created_ids.plugins_configurations)
         assert.are.equal(204, status)
+        assert.falsy(response)
       end)
 
     end)
@@ -241,8 +270,9 @@ describe("Admin API", function()
     describe("APIs", function()
 
       it("should delete an API", function()
-        local response, status, headers = http_client.delete(kWebURL.."/apis/"..created_ids.apis)
+        local response, status = http_client.delete(kWebURL.."/apis/"..created_ids.apis)
         assert.are.equal(204, status)
+        assert.falsy(response)
       end)
 
     end)
@@ -250,8 +280,9 @@ describe("Admin API", function()
     describe("Consumers", function()
 
       it("should delete a Consumer", function()
-        local response, status, headers = http_client.delete(kWebURL.."/consumers/"..created_ids.consumers)
+        local response, status = http_client.delete(kWebURL.."/consumers/"..created_ids.consumers)
         assert.are.equal(204, status)
+        assert.falsy(response)
       end)
 
     end)

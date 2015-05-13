@@ -44,11 +44,15 @@ function _M.post(url, form, headers)
   if not headers then headers = {} end
   if not form then form = {} end
 
-  local body = ngx.encode_args(form)
-  headers["content-length"] = string.len(body)
-  if not headers["content-type"] then
+  local body
+  if headers["content-type"] == "application/json" then
+    body = cjson.encode(form)
+  else
     headers["content-type"] = "application/x-www-form-urlencoded"
+    body = ngx.encode_args(form)
   end
+
+  headers["content-length"] = string.len(body)
 
   return http_call {
     method = "POST",
@@ -87,21 +91,25 @@ function _M.post_multipart(url, form, headers)
 end
 
 -- PUT method
-function _M.put(url, table, headers)
+function _M.put(url, form, headers)
   if not headers then headers = {} end
-  if not table then table = {} end
-  local raw_json = cjson.encode(table)
+  if not form then form = {} end
 
-  headers["content-length"] = string.len(raw_json)
-  if not headers["content-type"] then
-    headers["content-type"] = "application/json"
+  local body
+  if headers["content-type"] == "application/json" then
+    body = cjson.encode(form)
+  else
+    headers["content-type"] = "application/x-www-form-urlencoded"
+    body = ngx.encode_args(form)
   end
+
+  headers["content-length"] = string.len(body)
 
   return http_call {
     method = "PUT",
     url = url,
     headers = headers,
-    source = ltn12.source.string(raw_json)
+    source = ltn12.source.string(body)
   }
 end
 
