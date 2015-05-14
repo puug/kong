@@ -6,28 +6,6 @@ local responses = require "kong.tools.responses"
 
 local BaseController = Object:extend()
 
-local function render_list_response(req, data, size)
-  local next_url
-
-  if data.next_page then
-    local url = req.parsed_url.scheme.."://"..req.parsed_url.host..":"..req.parsed_url.port..req.parsed_url.path
-    next_url = url.."?"..ngx.encode_args {
-      offset = ngx.encode_base64(data.next_page),
-      size = size
-    }
-    data.next_page = nil
-  end
-
-  -- This check is required otherwise the response is going to be a
-  -- JSON Object and not a JSON array. The reason is because an empty Lua array `{}`
-  -- will not be translated as an empty array by cjson, but as an empty object.
-  if #data == 0 then
-    return "{\"data\":[]}"
-  else
-    return { data = data, ["next"] = next_url }
-  end
-end
-
 local function send_dao_error_response(err)
   if err.database then
     return responses.send_HTTP_INTERNAL_SERVER_ERROR(err.message)
@@ -135,7 +113,23 @@ function BaseController:new(dao_collection, collection)
       return send_dao_error_response(err)
     end
 
-    local result = render_list_response(self.req, data, size)
+    local next_url
+    if data.next_page then
+      next_url = self:build_url(self.req.parsed_url.path, {
+        port = self.req.parsed_url.port,
+        query = ngx.encode_args({
+                  offset = ngx.encode_base64(data.next_page),
+                  size = size
+                })
+      })
+      data.next_page = nil
+    end
+
+    -- This check is required otherwise the response is going to be a
+    -- JSON Object and not a JSON array. The reason is because an empty Lua array `{}`
+    -- will not be translated as an empty array by cjson, but as an empty object.
+    local result = #data == 0 and "{\"data\":[]}" or {data=data, ["next"]=next_url}
+
     return responses.send_HTTP_OK(result, type(result) ~= "table")
   end))
 
