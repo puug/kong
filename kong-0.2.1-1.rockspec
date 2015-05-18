@@ -78,6 +78,7 @@ build = {
     ["kong.dao.cassandra.ratelimiting_metrics"] = "kong/dao/cassandra/ratelimiting_metrics.lua",
     ["kong.dao.cassandra.basicauth_credentials"] = "kong/dao/cassandra/basicauth_credentials.lua",
     ["kong.dao.cassandra.keyauth_credentials"] = "kong/dao/cassandra/keyauth_credentials.lua",
+    ["kong.dao.cassandra.blocklist"] = "kong/dao/cassandra/blocklist.lua",
 
     ["kong.plugins.base_plugin"] = "kong/plugins/base_plugin.lua",
 
@@ -119,6 +120,7 @@ build = {
     ["kong.api.routes.apis"] = "kong/api/routes/apis.lua",
     ["kong.api.routes.consumers"] = "kong/api/routes/consumers.lua",
     ["kong.api.routes.plugins_configurations"] = "kong/api/routes/plugins_configurations.lua",
+    ["kong.api.routes.blocklist"] = "kong/api/routes/blocklist.lua",
     ["kong.api.routes.base_controller"] = "kong/api/routes/base_controller.lua"
   },
   install = {

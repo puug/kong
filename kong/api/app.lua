@@ -5,6 +5,7 @@ local constants = require "kong.constants"
 local Apis = require "kong.api.routes.apis"
 local Consumers = require "kong.api.routes.consumers"
 local PluginsConfigurations = require "kong.api.routes.plugins_configurations"
+local Blocklist = require "kong.api.routes.blocklist"
 
 app = lapis.Application()
 
@@ -72,6 +73,7 @@ end
 Apis()
 Consumers()
 PluginsConfigurations()
+Blocklist()
 
 -- Loading plugins routes
 if configuration and configuration.plugins_available then

@@ -15,6 +15,7 @@ return {
     DNSMASQ_PID = "dnsmasq.pid",
   },
   DATABASE_NULL_ID = "00000000-0000-0000-0000-000000000000",
+  DATABASE_MAX_TIMESTAMP = 2147483647,
   DATABASE_ERROR_TYPES = {
     SCHEMA = "schema",
     INVALID_TYPE = "invalid_type",

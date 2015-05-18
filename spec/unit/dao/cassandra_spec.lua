@@ -1046,4 +1046,32 @@ describe("Cassandra DAO", function()
 
   end) -- describe rate limiting metrics
 
+  --
+  -- Blocklist plugin collection
+  --
+
+  describe("Blocklist", function()
+    local blocklist = dao_factory.blocklist
+
+    after_each(function()
+      spec_helper.drop_db()
+    end)
+
+    it("should return nil when blocklist are not existing", function()
+      local ip = "127.0.0.1"
+      local block, err = blocklist:find_one(ip)
+      assert.falsy(err)
+      assert.are.same(nil, metric)
+    end)
+
+    it("should return a block when it exists in the blocklist", function()
+      local ip = "127.0.0.1"
+      blocklist:block(ip, "BLOCK", nil)
+      local block, err = blocklist:find_one(ip)
+      assert.falsy(err)
+      assert.truthy(block)
+    end)
+
+  end) -- describe rate limiting metrics
+
 end)
