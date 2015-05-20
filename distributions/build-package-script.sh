@@ -100,7 +100,7 @@ fi
 export PATH=$PATH:${OUT}/usr/local/bin:$(gem environment | awk -F': *' '/EXECUTABLE DIRECTORY/ {print $2}')
 
 # Check if the Kong version exists
-if ! [ `curl -s -o /dev/null -w "%{http_code}" https://github.com/Mashape/kong/tree/$KONG_BRANCH` == "200" ]; then
+if ! [ `curl -s -o /dev/null -w "%{http_code}" https://github.com/puug/kong/tree/$KONG_BRANCH` == "200" ]; then
   echo "Kong version \"$KONG_BRANCH\" doesn't exist!"
   exit 1
 else
@@ -179,7 +179,7 @@ export LUA_PATH=${OUT}/usr/local/share/lua/5.1/?.lua
 
 # Install Kong
 cd $TMP
-git clone --branch $KONG_BRANCH --depth 1 https://github.com/Mashape/kong.git
+git clone --branch $KONG_BRANCH --depth 1 https://github.com/puug/kong.git
 cd kong
 $OUT/usr/local/bin/luarocks make kong-*.rockspec
 
