@@ -11,6 +11,11 @@ local MULTIPART_DATA = "multipart/form-data"
 
 local _M = {}
 
+local function skip_authentication(headers)
+  -- Skip upload request that expect a 100 Continue response
+  return headers["expect"] and stringy.startswith(headers["expect"], "100")
+end
+
 local function get_key_from_query(key_name, request, conf)
   local key, parameters
   local found_in = {}
@@ -111,7 +116,7 @@ local retrieve_credentials = {
 }
 
 function _M.execute(conf)
-  if not conf then return end
+  if not conf or skip_authentication(ngx.req.get_headers()) then return end
 
   local credential
   for _, v in ipairs({ constants.AUTHENTICATION.QUERY, constants.AUTHENTICATION.HEADER }) do
@@ -139,7 +144,18 @@ function _M.execute(conf)
     return responses.send_HTTP_FORBIDDEN("Invalid authentication credentials")
   end
 
-  ngx.req.set_header(constants.HEADERS.CONSUMER_ID, credential.consumer_id)
+  -- Retrieve consumer
+  local consumer = cache.get_and_set(cache.consumer_key(credential.consumer_id), function()
+    local result, err = dao.consumers:find_one(credential.consumer_id)
+    if err then
+      return responses.send_HTTP_INTERNAL_SERVER_ERROR(err)
+    end
+    return result
+  end)
+
+  ngx.req.set_header(constants.HEADERS.CONSUMER_ID, consumer.id)
+  ngx.req.set_header(constants.HEADERS.CONSUMER_CUSTOM_ID, consumer.custom_id)
+  ngx.req.set_header(constants.HEADERS.CONSUMER_USERNAME, consumer.username)
   ngx.ctx.authenticated_entity = credential
 end
 

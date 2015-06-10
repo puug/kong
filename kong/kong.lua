@@ -75,7 +75,7 @@ local function init_plugins()
 
   -- Checking that the plugins in the DB are also enabled
   for _, v in ipairs(db_plugins) do
-    if not utils.array_contains(configuration.plugins_available, v) then
+    if not utils.table_contains(configuration.plugins_available, v) then
       error("You are using a plugin that has not been enabled in the configuration: "..v)
     end
   end
@@ -83,12 +83,12 @@ local function init_plugins()
   local unsorted_plugins = {} -- It's a multivalue table: k1 = {v1, v2, v3}, k2 = {...}
 
   for _, v in ipairs(configuration.plugins_available) do
-    local status, res = pcall(require, "kong.plugins."..v..".handler")
-    if not status then
+    local loaded, mod = utils.load_module_if_exists("kong.plugins."..v..".handler")
+    if not loaded then
       error("The following plugin has been enabled in the configuration but is not installed on the system: "..v)
     else
       print("Loading plugin: "..v)
-      local plugin_handler = res()
+      local plugin_handler = mod()
       local priority = plugin_handler.PRIORITY and plugin_handler.PRIORITY or 0
 
       -- Add plugin to the right priority
@@ -150,6 +150,23 @@ function _M.init()
   plugins = init_plugins()
 end
 
+function _M.exec_plugins_certificate()
+  ngx.ctx.plugin_conf = {}
+
+  for _, plugin in ipairs(plugins) do
+    if ngx.ctx.api then
+      ngx.ctx.plugin_conf[plugin.name] = load_plugin_conf(ngx.ctx.api.id, nil, plugin.name)
+    end
+
+    local conf = ngx.ctx.plugin_conf[plugin.name]
+    if not ngx.ctx.stop_phases and (plugin.resolver or conf) then
+      plugin.handler:certificate(conf and conf.value or nil)
+    end
+  end
+
+  return
+end
+
 -- Calls plugins_access() on every loaded plugin
 function _M.exec_plugins_access()
   -- Setting a property that will be available for every plugin
@@ -191,7 +208,7 @@ function _M.exec_plugins_header_filter()
   ngx.ctx.proxy_ended_at = timestamp.get_utc() -- Setting a property that will be available for every plugin
 
   if not ngx.ctx.stop_phases then
-    ngx.header[constants.HEADERS.VIA] = constants.NAME.."/"..constants.VERSION
+    ngx.header["Via"] = constants.NAME.."/"..constants.VERSION
 
     for _, plugin in ipairs(plugins) do
       local conf = ngx.ctx.plugin_conf[plugin.name]
@@ -220,19 +237,22 @@ function _M.exec_plugins_log()
     -- Creating the log variable that will be serialized
     local message = {
       request = {
+        uri = ngx.var.request_uri,
+        request_uri = ngx.var.scheme.."://"..ngx.var.host..":"..ngx.var.server_port..ngx.var.request_uri,
+        querystring = ngx.req.get_uri_args(), -- parameters, as a table
+        method = ngx.req.get_method(), -- http method
         headers = ngx.req.get_headers(),
         size = ngx.var.request_length
       },
       response = {
+        status = ngx.status,
         headers = ngx.resp.get_headers(),
-        size = ngx.var.body_bytes_sent
+        size = ngx.var.bytes_sent
       },
       authenticated_entity = ngx.ctx.authenticated_entity,
       api = ngx.ctx.api,
-      ip = ngx.var.remote_addr,
-      status = ngx.status,
-      url = ngx.var.uri,
-      started_at = ngx.ctx.started_at
+      client_ip = ngx.var.remote_addr,
+      started_at = ngx.req.start_time() * 1000
     }
 
     ngx.ctx.log_message = message

@@ -44,6 +44,10 @@ function _M.api_key(host)
   return constants.CACHE.APIS.."/"..host
 end
 
+function _M.consumer_key(id)
+  return constants.CACHE.CONSUMERS.."/"..id
+end
+
 function _M.plugin_configuration_key(name, api_id, consumer_id)
   return constants.CACHE.PLUGINS_CONFIGURATIONS.."/"..name.."/"..api_id..(consumer_id and "/"..consumer_id or "")
 end
@@ -54,6 +58,10 @@ end
 
 function _M.keyauth_credential_key(key)
   return constants.CACHE.KEYAUTH_CREDENTIAL.."/"..key
+end
+
+function _M.ssl_data(api_id)
+  return constants.CACHE.SSL.."/"..api_id
 end
 
 function _M.get_and_set(key, cb)
